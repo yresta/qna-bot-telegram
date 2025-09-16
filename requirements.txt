@@ -1,0 +1,9 @@
+python-telegram-bot
+Flask
+APScheduler
+python-dotenv
+psycopg2-binary
+pandas
+pytz
+rapidfuzz
+streamlit
