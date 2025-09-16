@@ -1,83 +1,82 @@
+from flask import Flask, request
 import asyncio
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-from apscheduler.schedulers.background import BackgroundScheduler
-import db
-from dotenv import load_dotenv
-import os
+from telegram.ext import Application, CommandHandler, MessageHandler, filters
 import logging
-import re 
+import db
+import os
+from dotenv import load_dotenv
+import re
+from apscheduler.schedulers.background import BackgroundScheduler
 
 logging.getLogger("telegram.ext").setLevel(logging.DEBUG)
 
 load_dotenv()
 TOKEN = os.getenv("TOKEN")
+WEBHOOK_PATH = f"/webhook/{TOKEN}"
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # url publik dari Render / domainmu
 
 db.init_db()
+app_bot = Application.builder().token(TOKEN).build()
+loop = asyncio.get_event_loop()
 
 # ===== Bot Handlers =====
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def start(update, context):
     await update.message.reply_text("Halo! Bot QnA siap digunakan.")
 
-async def handle_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_question(update, context):
     question_text = update.message.text
     chat_id = update.message.chat.id
     message_id = update.message.message_id
     user = update.message.from_user
-    first_name = user.first_name or ""
-    last_name = user.last_name or ""
-    full_name = f"{first_name} {last_name}".strip()
+    full_name = f"{user.first_name or ''} {user.last_name or ''}".strip()
 
-    # cek FAQ
     faq_answer = db.search_faq(question_text)
     if faq_answer:
         await update.message.reply_text(faq_answer)
-        return  # sangat penting: hentikan eksekusi di sini
+        return
 
-    # hanya teruskan jika ada kode PO
     if re.search(r"\bPO\w{8,}\b", question_text, re.IGNORECASE):
         db.add_question(question_text, chat_id, message_id, sender_name=full_name)
         logging.info(f"Pertanyaan diteruskan ke CS: {question_text}")
     else:
         logging.info(f"Pertanyaan tidak diteruskan karena bukan PO: {question_text}")
 
-# ===== Scheduler Job =====
-def auto_reply_job(app, loop):
-    try:
-        answered = db.get_questions(status="answered")
-        for q in answered:
-            try:
-                asyncio.run_coroutine_threadsafe(
-                    app.bot.send_message(
-                        chat_id=q[2],            
-                        text=f"{q[5]}\n- {q[7]}",
-                        reply_to_message_id=q[8] 
-                    ),
-                    loop
-                )
-                db.mark_replied(q[0])  # ubah status jadi replied
-                logging.info(f"Jawaban dikirim untuk ID {q[0]} ke chat {q[2]}")
-            except Exception as e:
-                logging.error(f"Error sending reply for ID {q[0]}: {e}")
-    except Exception as e:
-        logging.error(f"Error in auto_reply_job: {e}")
+app_bot.add_handler(MessageHandler(lambda msg: True, handle_question))
+app_bot.add_handler(CommandHandler("start", start))
 
-# ===== Main =====
-def main():
-    app = Application.builder().token(TOKEN).build()
+# ===== Scheduler =====
+def auto_reply_job():
+    answered = db.get_questions(status="answered")
+    for q in answered:
+        try:
+            asyncio.run_coroutine_threadsafe(
+                app_bot.bot.send_message(
+                    chat_id=q[2],
+                    text=f"{q[5]}\n- {q[7]}",
+                    reply_to_message_id=q[8]
+                ),
+                loop
+            )
+            db.mark_replied(q[0])
+        except Exception as e:
+            logging.error(f"Error sending reply for ID {q[0]}: {e}")
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_question))
+scheduler = BackgroundScheduler()
+scheduler.add_job(auto_reply_job, "interval", seconds=10)
+scheduler.start()
 
-    loop = asyncio.get_event_loop()
+# ===== Flask server =====
+flask_app = Flask(__name__)
 
-    scheduler = BackgroundScheduler()
-    scheduler.add_job(lambda: auto_reply_job(app, loop), 'interval', seconds=10)
-    scheduler.start()
-    logging.info("Scheduler started.")
-
-    logging.info("Bot polling started.")
-    app.run_polling()
+@flask_app.route(WEBHOOK_PATH, methods=["POST"])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), app_bot.bot)
+    asyncio.run_coroutine_threadsafe(app_bot.update_queue.put(update), loop)
+    return {"ok": True}
 
 if __name__ == "__main__":
-    main()
+    # Set webhook ke Telegram (jalankan sekali)
+    import requests
+    requests.get(f"https://api.telegram.org/bot{TOKEN}/setWebhook?url={WEBHOOK_URL}{WEBHOOK_PATH}")
+    flask_app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
