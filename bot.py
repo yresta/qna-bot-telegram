@@ -69,11 +69,9 @@ scheduler.start()
 # ===== Flask server =====
 flask_app = Flask(__name__)
 
-@flask_app.route(WEBHOOK_PATH, methods=["POST"])
-def webhook():
-    update = Update.de_json(request.get_json(force=True), app_bot.bot)
-    asyncio.run_coroutine_threadsafe(app_bot.update_queue.put(update), loop)
-    return {"ok": True}
+@flask_app.route("/")
+def index():
+    return "Bot is running ✅"
 
 if __name__ == "__main__":
     # Set webhook ke Telegram (jalankan sekali)
