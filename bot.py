@@ -42,7 +42,7 @@ async def handle_question(update, context):
     else:
         logging.info(f"Pertanyaan tidak diteruskan karena bukan PO: {question_text}")
 
-app_bot.add_handler(MessageHandler(lambda msg: True, handle_question))
+app_bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_question))
 app_bot.add_handler(CommandHandler("start", start))
 
 # ===== Scheduler =====
@@ -72,6 +72,12 @@ flask_app = Flask(__name__)
 @flask_app.route("/")
 def index():
     return "Bot is running ✅"
+
+@flask_app.route(WEBHOOK_PATH, methods=["POST"])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), app_bot.bot)
+    asyncio.run_coroutine_threadsafe(app_bot.process_update(update), loop)
+    return "ok", 200
 
 if __name__ == "__main__":
     # Set webhook ke Telegram (jalankan sekali)
