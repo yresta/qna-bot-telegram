@@ -76,8 +76,8 @@ def index():
 @flask_app.route(WEBHOOK_PATH, methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), app_bot.bot)
-    asyncio.run_coroutine_threadsafe(app_bot.process_update(update), loop)
-    return "ok", 200
+    asyncio.run_coroutine_threadsafe(app_bot.update_queue.put(update), loop)
+    return {"ok": True}
 
 if __name__ == "__main__":
     # Set webhook ke Telegram (jalankan sekali)
