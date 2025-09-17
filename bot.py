@@ -8,6 +8,7 @@ import os
 from dotenv import load_dotenv
 import re
 from apscheduler.schedulers.background import BackgroundScheduler
+import threading
 
 logging.getLogger("telegram.ext").setLevel(logging.DEBUG)
 
@@ -17,10 +18,15 @@ WEBHOOK_PATH = f"/webhook/{TOKEN}"
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # url publik dari Render / domainmu
 
 db.init_db()
-app_bot = Application.builder().token(TOKEN).build()
-loop = asyncio.get_event_loop()
 
-# ===== Bot Handlers =====
+# ===== Buat loop baru biar stabil =====
+loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
+
+# ===== Bot Application =====
+app_bot = Application.builder().token(TOKEN).build()
+
+# ----- Handlers -----
 async def start(update, context):
     await update.message.reply_text("Halo! Bot QnA siap digunakan.")
 
@@ -45,7 +51,7 @@ async def handle_question(update, context):
 app_bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_question))
 app_bot.add_handler(CommandHandler("start", start))
 
-# ===== Scheduler =====
+# ===== Scheduler untuk auto-reply =====
 def auto_reply_job():
     answered = db.get_questions(status="answered")
     for q in answered:
@@ -79,8 +85,19 @@ def webhook():
     asyncio.run_coroutine_threadsafe(app_bot.update_queue.put(update), loop)
     return {"ok": True}
 
+# ===== Jalankan bot & Flask bareng =====
+def run_loop():
+    loop.run_until_complete(app_bot.initialize())
+    loop.run_until_complete(app_bot.start())
+    loop.run_forever()
+
 if __name__ == "__main__":
-    # Set webhook ke Telegram (jalankan sekali)
+    # Start event loop di thread terpisah
+    threading.Thread(target=run_loop, daemon=True).start()
+
+    # Set webhook (sekali jalan)
     import requests
     requests.get(f"https://api.telegram.org/bot{TOKEN}/setWebhook?url={WEBHOOK_URL}{WEBHOOK_PATH}")
+
+    # Jalankan Flask (Render akan pakai ini)
     flask_app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
