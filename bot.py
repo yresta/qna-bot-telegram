@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 import re
 from apscheduler.schedulers.background import BackgroundScheduler
 import threading
+from faq import get_auto_answer
 
 logging.getLogger("telegram.ext").setLevel(logging.DEBUG)
 
