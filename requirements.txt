@@ -9,3 +9,4 @@ rapidfuzz
 # sentence-transformers
 # torch
 apscheduler
+requests
