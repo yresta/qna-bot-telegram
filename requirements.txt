@@ -6,6 +6,6 @@ psycopg2-binary
 pandas
 pytz
 rapidfuzz
-sentence-transformers
-torch
+# sentence-transformers
+# torch
 apscheduler
