@@ -7,3 +7,7 @@ pandas
 pytz
 rapidfuzz
 streamlit
+sentence-transformers
+torch
+torchvision
+torchaudio
