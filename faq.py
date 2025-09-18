@@ -1,22 +1,29 @@
 from sentence_transformers import SentenceTransformer, util
 import db
 
-model = SentenceTransformer("all-MiniLM-L6-v2")
+# ==== Init model & embeddings global ====
+model = SentenceTransformer("paraphrase-MiniLM-L3-v2")  # lebih ringan dari L6
+faq_embeddings = None
+faqs = None
 
-def build_embeddings():
+def init_embeddings():
+    """Load FAQ dari DB dan encode sekali saat startup."""
+    global faqs, faq_embeddings
     faqs = db.get_faq()
     if not faqs:
-        return [], None, None
+        faq_embeddings = None
+        return
 
     questions = [row[1] for row in faqs]
-    embeddings = model.encode(questions, convert_to_tensor=True)
-    return faqs, questions, embeddings
+    # encode batch kecil untuk hemat RAM
+    faq_embeddings = model.encode(questions, convert_to_tensor=True, batch_size=16)
 
 def get_auto_answer(question_text: str, threshold: float = 0.75):
-    faqs, _, faq_embeddings = build_embeddings()
-    if not faqs:
+    """Cari jawaban paling relevan dari FAQ."""
+    if not faqs or faq_embeddings is None:
         return None, 0.0
 
+    # Encode pertanyaan user saja
     q_embedding = model.encode(question_text, convert_to_tensor=True)
     cosine_scores = util.cos_sim(q_embedding, faq_embeddings)[0]
 
@@ -27,3 +34,5 @@ def get_auto_answer(question_text: str, threshold: float = 0.75):
         return faqs[best_idx][2], best_score  # return jawaban
     return None, best_score
 
+# ==== Panggil ini sekali di startup bot ====
+init_embeddings()
