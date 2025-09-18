@@ -12,7 +12,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from dotenv import load_dotenv
 
 import db
-from faq import get_auto_answer
+# from faq import get_auto_answer
 
 logging.getLogger("telegram.ext").setLevel(logging.DEBUG)
 
