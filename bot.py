@@ -1,33 +1,37 @@
-from flask import Flask, request
+import os
+import re
 import asyncio
+import logging
+import threading
+import requests
+
+from fastapi import FastAPI, Request
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
-import logging
-import db
-import os
-from dotenv import load_dotenv
-import re
 from apscheduler.schedulers.background import BackgroundScheduler
-import threading
+from dotenv import load_dotenv
+
+import db
 from faq import get_auto_answer
 
 logging.getLogger("telegram.ext").setLevel(logging.DEBUG)
 
 load_dotenv()
 TOKEN = os.getenv("TOKEN")
-WEBHOOK_PATH = f"/webhook/{TOKEN}"
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # url publik dari Render / domainmu
+WEBHOOK_PATH = f"/webhook/{TOKEN}"
 
+# ===== Init DB =====
 db.init_db()
 
-# ===== Buat loop baru biar stabil =====
+# ===== Event loop =====
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
 
 # ===== Bot Application =====
 app_bot = Application.builder().token(TOKEN).build()
 
-# ----- Handlers -----
+# ===== Handlers =====
 async def start(update, context):
     await update.message.reply_text("Halo! Bot QnA siap digunakan.")
 
@@ -43,7 +47,7 @@ async def handle_question(update, context):
     if faq_answer:
         await update.message.reply_text(faq_answer)
         return
-        
+
     if re.search(r"\bPO\w{8,}\b", question_text, re.IGNORECASE):
         db.add_question(question_text, chat_id, message_id, sender_name=full_name)
         logging.info(f"Pertanyaan diteruskan ke CS: {question_text}")
@@ -53,7 +57,7 @@ async def handle_question(update, context):
 app_bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_question))
 app_bot.add_handler(CommandHandler("start", start))
 
-# ===== Scheduler untuk auto-reply =====
+# ===== Scheduler =====
 def auto_reply_job():
     answered = db.get_questions(status="answered")
     for q in answered:
@@ -74,32 +78,34 @@ scheduler = BackgroundScheduler()
 scheduler.add_job(auto_reply_job, "interval", seconds=10)
 scheduler.start()
 
-# ===== Flask server =====
-flask_app = Flask(__name__)
+# ===== FastAPI server =====
+fastapi_app = FastAPI()
 
-@flask_app.route("/")
-def index():
-    return "Bot is running ✅"
+@fastapi_app.get("/")
+async def index():
+    return {"status": "Bot is running ✅"}
 
-@flask_app.route(WEBHOOK_PATH, methods=["POST"])
-def webhook():
-    update = Update.de_json(request.get_json(force=True), app_bot.bot)
-    asyncio.run_coroutine_threadsafe(app_bot.update_queue.put(update), loop)
+@fastapi_app.post(WEBHOOK_PATH)
+async def webhook(req: Request):
+    data = await req.json()
+    update = Update.de_json(data, app_bot.bot)
+    await app_bot.update_queue.put(update)
     return {"ok": True}
 
-# ===== Jalankan bot & Flask bareng =====
-def run_loop():
+# ===== Jalankan bot =====
+def run_bot():
     loop.run_until_complete(app_bot.initialize())
     loop.run_until_complete(app_bot.start())
     loop.run_forever()
 
 if __name__ == "__main__":
-    # Start event loop di thread terpisah
-    threading.Thread(target=run_loop, daemon=True).start()
+    # start bot di thread terpisah
+    threading.Thread(target=run_bot, daemon=True).start()
 
-    # Set webhook (sekali jalan)
-    import requests
+    # set webhook sekali jalan
     requests.get(f"https://api.telegram.org/bot{TOKEN}/setWebhook?url={WEBHOOK_URL}{WEBHOOK_PATH}")
 
-    # Jalankan Flask (Render akan pakai ini)
-    flask_app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
+    # jalankan FastAPI (Render butuh port binding)
+    import uvicorn
+    port = int(os.getenv("PORT", 10000))
+    uvicorn.run(fastapi_app, host="0.0.0.0", port=port)
