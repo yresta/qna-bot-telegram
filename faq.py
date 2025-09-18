@@ -1,7 +1,7 @@
 from sentence_transformers import SentenceTransformer, util
 import db
 
-model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
+model = SentenceTransformer("all-MiniLM-L6-v2")
 
 def build_embeddings():
     faqs = db.get_faq()
@@ -26,3 +26,4 @@ def get_auto_answer(question_text: str, threshold: float = 0.75):
     if best_score >= threshold:
         return faqs[best_idx][2], best_score  # return jawaban
     return None, best_score
+
