@@ -1,38 +1,33 @@
-import os
-import re
+from flask import Flask, request
 import asyncio
-import logging
-import threading
-import requests
-
-from fastapi import FastAPI, Request
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
-from apscheduler.schedulers.background import BackgroundScheduler
-from dotenv import load_dotenv
-
+import logging
 import db
-# from faq import get_auto_answer
+import os
+from dotenv import load_dotenv
+import re
+from apscheduler.schedulers.background import BackgroundScheduler
+import threading
 
 logging.getLogger("telegram.ext").setLevel(logging.DEBUG)
 
 load_dotenv()
 TOKEN = os.getenv("TOKEN")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # url publik dari Render / domainmu
 WEBHOOK_PATH = f"/webhook/{TOKEN}"
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # url publik dari Render / domainmu
 FAQ_API_URL = os.getenv("FAQ_API_URL")
 
-# ===== Init DB =====
 db.init_db()
 
-# ===== Event loop =====
+# ===== Buat loop baru biar stabil =====
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
 
 # ===== Bot Application =====
 app_bot = Application.builder().token(TOKEN).build()
 
-# ===== Handlers =====
+# ----- Handlers -----
 async def start(update, context):
     await update.message.reply_text("Halo! Bot QnA siap digunakan.")
 
@@ -42,18 +37,6 @@ async def handle_question(update, context):
     message_id = update.message.message_id
     user = update.message.from_user
     full_name = f"{user.first_name or ''} {user.last_name or ''}".strip()
-
-    # # cek FAQ pakai model
-    # faq_answer, score = get_auto_answer(question_text)
-    # if faq_answer:
-    #     await update.message.reply_text(faq_answer)
-    #     return
-
-    # # cek FAQ
-    # faq_answer = db.search_faq(question_text)
-    # if faq_answer:
-    #     await update.message.reply_text(faq_answer)
-    #     return  
 
     # ==== panggil Hugging Face API ====
     try:
@@ -79,7 +62,7 @@ async def handle_question(update, context):
 app_bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_question))
 app_bot.add_handler(CommandHandler("start", start))
 
-# ===== Scheduler =====
+# ===== Scheduler untuk auto-reply =====
 def auto_reply_job():
     answered = db.get_questions(status="answered")
     for q in answered:
@@ -100,34 +83,32 @@ scheduler = BackgroundScheduler()
 scheduler.add_job(auto_reply_job, "interval", seconds=10)
 scheduler.start()
 
-# ===== FastAPI server =====
-fastapi_app = FastAPI()
+# ===== Flask server =====
+flask_app = Flask(_name_)
 
-@fastapi_app.get("/")
-async def index():
-    return {"status": "Bot is running ✅"}
+@flask_app.route("/")
+def index():
+    return "Bot is running ✅"
 
-@fastapi_app.post(WEBHOOK_PATH)
-async def webhook(req: Request):
-    data = await req.json()
-    update = Update.de_json(data, app_bot.bot)
-    await app_bot.update_queue.put(update)
+@flask_app.route(WEBHOOK_PATH, methods=["POST"])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), app_bot.bot)
+    asyncio.run_coroutine_threadsafe(app_bot.update_queue.put(update), loop)
     return {"ok": True}
 
-# ===== Jalankan bot =====
-def run_bot():
+# ===== Jalankan bot & Flask bareng =====
+def run_loop():
     loop.run_until_complete(app_bot.initialize())
     loop.run_until_complete(app_bot.start())
     loop.run_forever()
 
-if __name__ == "__main__":
-    # start bot di thread terpisah
-    threading.Thread(target=run_bot, daemon=True).start()
+if _name_ == "_main_":
+    # Start event loop di thread terpisah
+    threading.Thread(target=run_loop, daemon=True).start()
 
-    # set webhook sekali jalan
+    # Set webhook (sekali jalan)
+    import requests
     requests.get(f"https://api.telegram.org/bot{TOKEN}/setWebhook?url={WEBHOOK_URL}{WEBHOOK_PATH}")
 
-    # jalankan FastAPI (Render butuh port binding)
-    import uvicorn
-    port = int(os.getenv("PORT", 10000))
-    uvicorn.run(fastapi_app, host="0.0.0.0", port=port)
+    # Jalankan Flask (Render akan pakai ini)
+    flask_app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
