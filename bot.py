@@ -91,9 +91,9 @@ async def handle_question(update, context):
     full_name = f"{user.first_name or ''} {user.last_name or ''}".strip()
 
     faq_answer, score = get_auto_answer(question_text)
-        if faq_answer:
-            await update.message.reply_text(faq_answer)
-            return
+    if faq_answer:
+        await update.message.reply_text(faq_answer)
+        return
             
     if re.search(r"\bPO\w{8,}\b", question_text, re.IGNORECASE):
         db.add_question(question_text, chat_id, message_id, sender_name=full_name)
