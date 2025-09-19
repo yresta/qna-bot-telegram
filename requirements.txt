@@ -8,3 +8,4 @@ pytz
 rapidfuzz
 streamlit
 numpy
+requests
