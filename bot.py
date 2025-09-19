@@ -10,6 +10,7 @@ import re
 from apscheduler.schedulers.background import BackgroundScheduler
 import threading
 import numpy as np
+import requests
 
 logging.getLogger("telegram.ext").setLevel(logging.DEBUG)
 
