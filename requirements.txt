@@ -7,3 +7,4 @@ pandas
 pytz
 rapidfuzz
 streamlit
+numpy
