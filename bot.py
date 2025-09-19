@@ -20,6 +20,54 @@ FAQ_API_URL = os.getenv("FAQ_API_URL")
 
 db.init_db()
 
+# ===== Global FAQ embeddings =====
+faq_embeddings = None
+faqs = None
+
+def encode_remote(texts):
+    """Panggil API model untuk dapat embeddings."""
+    resp = requests.post(
+        FAQ_API_URL,
+        json={"inputs": texts},
+        timeout=30
+    )
+    resp.raise_for_status()
+    return resp.json()  # list of embeddings
+
+
+def init_embeddings():
+    """Load FAQ dari DB dan encode sekali di startup."""
+    global faqs, faq_embeddings
+    faqs = db.get_faq()  # [(id, pertanyaan, jawaban), ...]
+    if not faqs:
+        faq_embeddings = None
+        return
+
+    questions = [row[1] for row in faqs]
+    faq_embeddings = np.array(encode_remote(questions))
+
+
+def get_auto_answer(question_text: str, threshold: float = 0.75):
+    """Cari jawaban paling relevan dari FAQ."""
+    if not faqs or faq_embeddings is None:
+        return None, 0.0
+
+    q_embedding = np.array(encode_remote([question_text])[0])
+
+    sims = faq_embeddings @ q_embedding / (
+        np.linalg.norm(faq_embeddings, axis=1) * np.linalg.norm(q_embedding)
+    )
+
+    best_idx = int(np.argmax(sims))
+    best_score = float(sims[best_idx])
+
+    if best_score >= threshold:
+        return faqs[best_idx][2], best_score
+    return None, best_score
+
+# ==== Startup: encode semua FAQ ====
+init_embeddings()
+
 # ===== Buat loop baru biar stabil =====
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
