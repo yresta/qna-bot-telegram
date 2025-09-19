@@ -27,31 +27,17 @@ faq_embeddings = None
 faqs = None
 
 def encode_remote(texts):
-    # coba format 1: {"data": texts}
-    resp = requests.post(
-        FAQ_API_URL,
-        json={"data": texts},
-        timeout=30
-    )
-    if resp.status_code == 422:
-        # coba format alternatif: {"inputs": texts}
+    embeddings = []
+    for t in texts:
         resp = requests.post(
-            FAQ_API_URL,
-            json={"inputs": texts},
+            FAQ_API_URL + "/embed",
+            json={"text": t},  # sesuai schema
             timeout=30
         )
-    resp.raise_for_status()
-    # respon mungkin format {"data": [... embeddings ...]}
-    j = resp.json()
-    # cari apakah ada key "data" atau "embeddings" atau "output"
-    if "data" in j:
-        return j["data"]
-    if "embeddings" in j:
-        return j["embeddings"]
-    if "output" in j:
-        return j["output"]
-    # fallback kalau format unik
-    return j
+        resp.raise_for_status()
+        data = resp.json()
+        embeddings.append(data["embedding"])  # pastikan key benar
+    return embeddings
 
 def init_embeddings():
     """Load FAQ dari DB dan encode sekali di startup."""
