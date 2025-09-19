@@ -102,7 +102,7 @@ def run_loop():
     loop.run_until_complete(app_bot.start())
     loop.run_forever()
 
-if _name_ == "_main_":
+if __name__ == "__main__":
     # Start event loop di thread terpisah
     threading.Thread(target=run_loop, daemon=True).start()
 
