@@ -90,21 +90,11 @@ async def handle_question(update, context):
     user = update.message.from_user
     full_name = f"{user.first_name or ''} {user.last_name or ''}".strip()
 
-    # ==== panggil Hugging Face API ====
-    try:
-        resp = requests.post(
-            f"{FAQ_API_URL}/faq",
-            json={"text": question_text},
-            timeout=10
-        )
-        if resp.status_code == 200:
-            data = resp.json()
-            if data.get("score", 0) > 0.75:  # threshold
-                await update.message.reply_text(data["faq_answer"])
-                return
-    except Exception as e:
-        print("FAQ API error:", e)
-        
+    faq_answer, score = get_auto_answer(question_text)
+        if faq_answer:
+            await update.message.reply_text(faq_answer)
+            return
+            
     if re.search(r"\bPO\w{8,}\b", question_text, re.IGNORECASE):
         db.add_question(question_text, chat_id, message_id, sender_name=full_name)
         logging.info(f"Pertanyaan diteruskan ke CS: {question_text}")
