@@ -84,7 +84,7 @@ scheduler.add_job(auto_reply_job, "interval", seconds=10)
 scheduler.start()
 
 # ===== Flask server =====
-flask_app = Flask(_name_)
+flask_app = Flask(__name__)
 
 @flask_app.route("/")
 def index():
